@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OCR TXT → EPUB 清洗</title>
+<title>PDF → MinerU → EPUB</title>
 <style>
   :root {
     --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --line: #2a2f3a;
@@ -22,6 +22,7 @@
   }
   h1 { font-size: 22px; font-weight: 700; letter-spacing: .5px; }
   .sub { color: var(--muted); font-size: 13px; margin-top: 6px; line-height: 1.6; }
+  .sub b { color: var(--accent); }
   .drop {
     margin-top: 26px; border: 2px dashed var(--line); border-radius: var(--radius);
     padding: 44px 20px; text-align: center; cursor: pointer; transition: all .2s;
@@ -33,7 +34,7 @@
   .drop strong { color: var(--accent); }
   input[type=file] { display: none; }
   .fileinfo {
-    display: none; margin-top: 18px; background: var(--panel2); border: 1px solid var(--line);
+    margin-top: 18px; background: var(--panel2); border: 1px solid var(--line);
     border-radius: 10px; padding: 14px 16px; font-size: 14px;
     display: none; align-items: center; justify-content: space-between;
   }
@@ -53,7 +54,7 @@
   .bar .fill {
     height: 100%; width: 0%; border-radius: 99px;
     background: linear-gradient(90deg, var(--accent), var(--accent2));
-    transition: width .4s ease;
+    transition: width .5s ease;
   }
   .eta { margin-top: 10px; font-size: 13px; color: var(--muted); }
   .eta b { color: var(--text); }
@@ -77,14 +78,14 @@
 </head>
 <body>
 <div class="card">
-  <h1>📖 OCR TXT → EPUB 清洗</h1>
-  <div class="sub">规则清洗：页码/页眉/装饰噪声移除 · 连字符合并 · 年份锚分章 · 星号脚注双向链接 · 分章 EPUB 输出</div>
+  <h1>📕 PDF → MinerU → EPUB</h1>
+  <div class="sub">MinerU 2.5 VLM 版面解析 · 页眉页脚脚注视觉剥离 · 章末双链脚注 · 插图嵌入 · <b>字符留存率审计</b></div>
 
   <div class="drop" id="drop">
-    <div class="icon">📄</div>
-    <div>拖拽 <strong>TXT</strong> 到此处，或点击选择文件</div>
-    <div class="hint">仅支持 .txt · 最大 100MB</div>
-    <input type="file" id="file" accept=".txt">
+    <div class="icon">📕</div>
+    <div>拖拽 <strong>PDF</strong> 到此处，或点击选择文件</div>
+    <div class="hint">仅支持 .pdf · 最大 200MB · 全书 VLM 解析约 10 秒/页</div>
+    <input type="file" id="file" accept=".pdf">
   </div>
 
   <div class="fileinfo" id="fileinfo">
@@ -92,7 +93,7 @@
     <span id="fsize" style="color:var(--muted)"></span>
   </div>
 
-  <button class="btn" id="start" disabled>开始清洗 → EPUB</button>
+  <button class="btn" id="start" disabled>开始解析 → EPUB</button>
 
   <div class="prog-wrap" id="progwrap">
     <div class="prog-head">
@@ -102,22 +103,19 @@
     <div class="bar"><div class="fill" id="fill"></div></div>
     <div class="eta" id="eta"></div>
     <div class="stages" id="stages">
-      <span data-s="读取文件">读取文件</span><span data-s="锚点检测">锚点检测</span><span
-      data-s="页码检测">页码检测</span><span data-s="页眉检测">页眉检测</span><span
-      data-s="噪声过滤">噪声过滤</span><span data-s="连字符合并">连字符合并</span><span
-      data-s="章切分">章切分</span><span data-s="段落重组">段落重组</span><span
-      data-s="生成EPUB">生成EPUB</span>
+      <span data-s="检查PDF">检查PDF</span><span data-s="MinerU解析">MinerU解析</span><span
+      data-s="转换EPUB">转换EPUB</span><span data-s="完成">完成</span>
     </div>
     <div class="err" id="err"></div>
   </div>
 
   <div class="result" id="result">
-    <h2>✅ 清洗完成</h2>
+    <h2>✅ 转换完成</h2>
     <div class="stats">
       <div class="stat"><div class="v" id="r_ch">-</div><div class="k">章节</div></div>
-      <div class="stat"><div class="v" id="r_pa">-</div><div class="k">段落</div></div>
-      <div class="stat"><div class="v" id="r_fn">-</div><div class="k">脚注</div></div>
-      <div class="stat"><div class="v" id="r_tm">-</div><div class="k">耗时</div></div>
+      <div class="stat"><div class="v" id="r_fn">-</div><div class="k">脚注配对</div></div>
+      <div class="stat"><div class="v" id="r_img">-</div><div class="k">插图</div></div>
+      <div class="stat"><div class="v" id="r_re">-</div><div class="k">留存率</div></div>
     </div>
     <a class="dl" id="dl" href="#">⬇️ 下载 EPUB</a>
     <button class="again" id="again">再转换一本</button>
@@ -141,12 +139,13 @@ function fmtSize(b) {
 function fmtETA(s) {
   if (s == null) return '估算中…';
   if (s < 5) return '即将完成';
-  const m = Math.floor(s/60), sec = Math.round(s%60);
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.round(s%60);
+  if (h > 0) return `约 ${h} 小时 ${m} 分`;
   return m > 0 ? `约 ${m} 分 ${sec} 秒` : `约 ${sec} 秒`;
 }
 function setFile(f) {
   if (!f) return;
-  if (!f.name.toLowerCase().endsWith('.txt')) { alert('仅支持 .txt 文件'); return; }
+  if (!f.name.toLowerCase().endsWith('.pdf')) { alert('仅支持 .pdf 文件'); return; }
   chosen = f;
   $('fname').textContent = f.name;
   $('fsize').textContent = fmtSize(f.size);
@@ -182,7 +181,7 @@ function poll(id) {
       const d = await r.json();
       $('fill').style.width = (d.percent||0) + '%';
       $('pct').textContent = (d.percent||0) + '%';
-      $('stage').textContent = d.stage || '';
+      $('stage').textContent = (d.stage||'') + (d.detail ? ` · ${d.detail}` : '') + (d.pages ? ` · 共${d.pages}页` : '');
       $('eta').textContent = d.state === 'done' ? `总耗时 ${d.elapsed_s}s`
         : `预计剩余时间：<b>${fmtETA(d.eta_s)}</b>`;
       document.querySelectorAll('#stages span').forEach(s => {
@@ -197,10 +196,11 @@ function poll(id) {
         clearInterval(timer);
         $('fill').style.width = '100%'; $('pct').textContent = '100%';
         $('progwrap').style.display = 'none';
-        $('r_ch').textContent = d.chapters ?? '-';
-        $('r_pa').textContent = d.paras ?? '-';
-        $('r_fn').textContent = d.footnotes ?? '-';
-        $('r_tm').textContent = d.elapsed_s + 's';
+        const a = d.audit || {};
+        $('r_ch').textContent = a.chapters ?? '-';
+        $('r_fn').textContent = a.footnotes_matched != null ? `${a.footnotes_matched}/${a.footnotes_total}` : '-';
+        $('r_img').textContent = a.images_embedded ?? '-';
+        $('r_re').textContent = a.retention_pct != null ? a.retention_pct + '%' : '-';
         $('dl').href = d.download;
         $('result').style.display = 'block';
         $('start').disabled = false;
@@ -209,8 +209,8 @@ function poll(id) {
         showError(d.error || '处理失败');
         $('start').disabled = false;
       }
-    } catch (e) { /* 网络抖动忽略，下轮重试 */ }
-  }, 600);
+    } catch (e) { /* 网络抖动忽略 */ }
+  }, 800);
 }
 
 function showError(msg) {
@@ -219,7 +219,6 @@ function showError(msg) {
   el.style.display = 'block';
   $('progwrap').style.display = 'block';
   $('eta').textContent = '';
-  $('fill').style.width = '0%';
 }
 
 $('again').onclick = () => {
