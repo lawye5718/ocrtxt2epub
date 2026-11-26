@@ -143,9 +143,15 @@ def is_noise(line, cfg):
 
 # ==================== 阶段1：规则预处理 ====================
 class Preprocessor:
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, progress_cb=None):
         self.cfg = cfg
         self.stats = defaultdict(int)
+        self.progress_cb = progress_cb   # progress_cb(stage, done, total)
+
+    def _tick(self, stage, done, total):
+        if self.progress_cb:
+            try: self.progress_cb(stage, done, total)
+            except Exception: pass
 
     def read_lines(self, path):
         raw = open(path, encoding='utf-8', errors='ignore').read()
@@ -211,13 +217,23 @@ class Preprocessor:
     def preprocess(self, input_file):
         lines = self.read_lines(input_file)
         self.stats['input_lines'] = len(lines)
+        total = len(lines)
+        self._tick('读取文件', total, total)
         # 锚/区域都在原始行上检测（过滤后行号体系会错位）
+        self._tick('锚点检测', 0, total)
         anchors = {i for i in range(len(lines)) if is_chapter_anchor(lines, i, self.cfg)}
+        self._tick('锚点检测', total, total)
         regions = find_regions(lines)
         # 页码/页眉检测先行（噪声过滤会吞掉数字行，顺序不能反）
+        self._tick('页码检测', 0, total)
         page_idx = self.detect_page_numbers(lines)
+        self._tick('页码检测', total, total)
+        self._tick('页眉检测', 0, total)
         hdr_idx = self.detect_headers(lines, page_idx)
+        self._tick('页眉检测', total, total)
+        self._tick('噪声过滤', 0, total)
         noise_idx = {i for i, l in enumerate(lines) if is_noise(l, self.cfg)}
+        self._tick('噪声过滤', total, total)
         self.stats['noise_removed'] = len(noise_idx - anchors)
         filtered, fmap = [], []   # fmap: 过滤行 → 原始行号
         for i, l in enumerate(lines):
@@ -225,8 +241,10 @@ class Preprocessor:
                 continue   # 锚行全局豁免（章内页眉年份=锚行,不能删）
             filtered.append(l); fmap.append(i)
         # 连字符合并
+        self._tick('连字符合并', 0, len(filtered))
         out, omap, i = [], [], 0
         while i < len(filtered):
+            if i % 2000 == 0: self._tick('连字符合并', i, len(filtered))
             line = filtered[i]
             if line.endswith('-') and i+1 < len(filtered):
                 nxt = filtered[i+1].strip()
@@ -236,6 +254,7 @@ class Preprocessor:
                     self.stats['hyphens_merged'] += 1
                     continue
             out.append(line); omap.append(fmap[i]); i += 1
+        self._tick('连字符合并', len(filtered), len(filtered))
         self.stats['output_lines'] = len(out)
         self.stats['anchors'] = len(anchors)
         return out, omap, anchors, regions
