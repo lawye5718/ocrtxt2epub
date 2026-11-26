@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PDF → MinerU → EPUB</title>
+<title>PDF → MinerU → EPUB 批量转换</title>
 <style>
   :root {
     --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --line: #2a2f3a;
@@ -14,220 +14,184 @@
   body {
     background: radial-gradient(1200px 600px at 70% -10%, #1a2033 0%, var(--bg) 60%);
     color: var(--text); font-family: -apple-system, "PingFang SC", "Segoe UI", sans-serif;
-    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+    min-height: 100vh; display: flex; justify-content: center; padding: 24px;
   }
   .card {
-    width: 100%; max-width: 640px; background: var(--panel); border: 1px solid var(--line);
-    border-radius: var(--radius); padding: 36px; box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    width: 100%; max-width: 720px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    align-self: flex-start;
   }
-  h1 { font-size: 22px; font-weight: 700; letter-spacing: .5px; }
+  h1 { font-size: 21px; font-weight: 700; }
   .sub { color: var(--muted); font-size: 13px; margin-top: 6px; line-height: 1.6; }
   .sub b { color: var(--accent); }
+  .row { display: flex; gap: 10px; margin-top: 22px; }
   .drop {
-    margin-top: 26px; border: 2px dashed var(--line); border-radius: var(--radius);
-    padding: 44px 20px; text-align: center; cursor: pointer; transition: all .2s;
+    flex: 1; border: 2px dashed var(--line); border-radius: var(--radius);
+    padding: 30px 16px; text-align: center; cursor: pointer; transition: all .2s;
     background: var(--panel2);
   }
   .drop:hover, .drop.over { border-color: var(--accent); background: #20263a; }
-  .drop .icon { font-size: 40px; margin-bottom: 10px; }
-  .drop .hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .drop .icon { font-size: 32px; margin-bottom: 8px; }
+  .drop .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
   .drop strong { color: var(--accent); }
   input[type=file] { display: none; }
-  .fileinfo {
-    margin-top: 18px; background: var(--panel2); border: 1px solid var(--line);
-    border-radius: 10px; padding: 14px 16px; font-size: 14px;
-    display: none; align-items: center; justify-content: space-between;
+  .queue-hint { margin-top: 14px; font-size: 12px; color: var(--muted); display: none; }
+  .task {
+    margin-top: 16px; background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px;
   }
-  .fileinfo.show { display: flex; }
-  .fileinfo .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
-  .btn {
-    margin-top: 20px; width: 100%; padding: 14px; border: 0; border-radius: 10px;
-    background: linear-gradient(135deg, var(--accent), #7c5bff); color: #fff;
-    font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity .2s;
+  .task .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .task .name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task .status { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .task .status.ok { color: var(--accent2); font-weight: 700; }
+  .task .status.err { color: var(--danger); }
+  .bar { height: 8px; background: var(--panel); border-radius: 99px; overflow: hidden; border: 1px solid var(--line); margin-top: 10px; }
+  .bar .fill { height: 100%; width: 0%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .5s ease; }
+  .task .meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 7px; }
+  .task .dl {
+    display: inline-block; margin-top: 10px; padding: 8px 16px; border-radius: 8px; text-decoration: none;
+    background: linear-gradient(135deg, var(--accent2), #2bb673); color: #08110c; font-weight: 700; font-size: 13px;
   }
-  .btn:hover { opacity: .92; }
-  .btn:disabled { opacity: .4; cursor: not-allowed; }
-  .prog-wrap { display: none; margin-top: 26px; }
-  .prog-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
-  .prog-head .pct { color: var(--accent2); font-weight: 700; font-size: 15px; }
-  .bar { height: 10px; background: var(--panel2); border-radius: 99px; overflow: hidden; border: 1px solid var(--line); }
-  .bar .fill {
-    height: 100%; width: 0%; border-radius: 99px;
-    background: linear-gradient(90deg, var(--accent), var(--accent2));
-    transition: width .5s ease;
-  }
-  .eta { margin-top: 10px; font-size: 13px; color: var(--muted); }
-  .eta b { color: var(--text); }
-  .stages { margin-top: 14px; font-size: 12px; color: var(--muted); line-height: 1.9; }
-  .stages span { margin-right: 14px; }
-  .stages .cur { color: var(--accent2); font-weight: 600; }
-  .stages .done { color: #566; text-decoration: line-through; }
-  .result { display: none; margin-top: 26px; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
-  .result h2 { font-size: 16px; color: var(--accent2); margin-bottom: 12px; }
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
-  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; text-align: center; }
-  .stat .v { font-size: 18px; font-weight: 700; color: var(--accent); }
-  .stat .k { font-size: 11px; color: var(--muted); margin-top: 3px; }
-  .dl {
-    display: block; text-align: center; padding: 13px; border-radius: 10px; text-decoration: none;
-    background: linear-gradient(135deg, var(--accent2), #2bb673); color: #08110c; font-weight: 700; font-size: 15px;
-  }
-  .err { display: none; margin-top: 20px; background: #2a1a1e; border: 1px solid #5a2a33; border-radius: 10px; padding: 14px; color: var(--danger); font-size: 13px; white-space: pre-wrap; }
-  .again { margin-top: 14px; background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 10px; padding: 10px; width: 100%; cursor: pointer; font-size: 13px; }
+  .task .err-msg { margin-top: 8px; font-size: 12px; color: var(--danger); }
+  .legend { margin-top: 18px; font-size: 12px; color: var(--muted); line-height: 1.8; }
 </style>
 </head>
 <body>
 <div class="card">
-  <h1>📕 PDF → MinerU → EPUB</h1>
-  <div class="sub">MinerU 2.5 VLM 版面解析 · 页眉页脚脚注视觉剥离 · 章末双链脚注 · 插图嵌入 · <b>字符留存率审计</b></div>
+  <h1>📚 PDF → MinerU → EPUB 批量转换</h1>
+  <div class="sub">MinerU 2.5 VLM 解析 · 章末双链脚注 · 插图嵌入 · 断点续传 · <b>完成后自动下载到 Downloads</b></div>
 
-  <div class="drop" id="drop">
-    <div class="icon">📕</div>
-    <div>拖拽 <strong>PDF</strong> 到此处，或点击选择文件</div>
-    <div class="hint">仅支持 .pdf · 最大 200MB · 全书 VLM 解析约 10 秒/页</div>
-    <input type="file" id="file" accept=".pdf">
-  </div>
-
-  <div class="fileinfo" id="fileinfo">
-    <span class="name" id="fname"></span>
-    <span id="fsize" style="color:var(--muted)"></span>
-  </div>
-
-  <button class="btn" id="start" disabled>开始解析 → EPUB</button>
-
-  <div class="prog-wrap" id="progwrap">
-    <div class="prog-head">
-      <span id="stage">准备中…</span>
-      <span class="pct" id="pct">0%</span>
+  <div class="row">
+    <div class="drop" id="dropFiles">
+      <div class="icon">📄</div>
+      <div>拖拽或点击选择 <strong>多个 PDF</strong></div>
+      <div class="hint">支持批量 · 单文件限 200MB</div>
+      <input type="file" id="files" accept=".pdf" multiple>
     </div>
-    <div class="bar"><div class="fill" id="fill"></div></div>
-    <div class="eta" id="eta"></div>
-    <div class="stages" id="stages">
-      <span data-s="检查PDF">检查PDF</span><span data-s="MinerU解析">MinerU解析</span><span
-      data-s="转换EPUB">转换EPUB</span><span data-s="完成">完成</span>
+    <div class="drop" id="dropDir">
+      <div class="icon">📁</div>
+      <div>选择<strong>整个文件夹</strong></div>
+      <div class="hint">自动筛出所有 PDF</div>
+      <input type="file" id="dir" webkitdirectory>
     </div>
-    <div class="err" id="err"></div>
   </div>
-
-  <div class="result" id="result">
-    <h2>✅ 转换完成</h2>
-    <div class="stats">
-      <div class="stat"><div class="v" id="r_ch">-</div><div class="k">章节</div></div>
-      <div class="stat"><div class="v" id="r_fn">-</div><div class="k">脚注配对</div></div>
-      <div class="stat"><div class="v" id="r_img">-</div><div class="k">插图</div></div>
-      <div class="stat"><div class="v" id="r_re">-</div><div class="k">留存率</div></div>
-    </div>
-    <a class="dl" id="dl" href="#">⬇️ 下载 EPUB</a>
-    <button class="again" id="again">再转换一本</button>
+  <div class="queue-hint" id="qhint"></div>
+  <div id="tasklist"></div>
+  <div class="legend">
+    💡 页面刷新不丢任务（断点恢复）· 解析完成的缓存跳过解析阶段 ·
+    浏览器首次自动下载多个文件时会询问一次，选择"允许"即可全部落入 Downloads
   </div>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
-const drop = $('drop'), fileInput = $('file');
-let chosen = null, timer = null;
+const dropFiles = $('dropFiles'), dropDir = $('dropDir');
+const fileInput = $('files'), dirInput = $('dir');
+const triggered = new Set();   // 已自动下载的任务
+let firstRender = true;
 
-drop.onclick = () => fileInput.click();
-drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
-drop.ondragleave = () => drop.classList.remove('over');
-drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); setFile(e.dataTransfer.files[0]); };
-fileInput.onchange = () => setFile(fileInput.files[0]);
+dropFiles.onclick = () => fileInput.click();
+dropDir.onclick = () => dirInput.click();
+[dropFiles, dropDir].forEach(d => {
+  d.ondragover = e => { e.preventDefault(); d.classList.add('over'); };
+  d.ondragleave = () => d.classList.remove('over');
+  d.ondrop = e => { e.preventDefault(); d.classList.remove('over'); uploadBatch(e.dataTransfer.files); };
+});
+fileInput.onchange = () => { uploadBatch(fileInput.files); fileInput.value = ''; };
+dirInput.onchange = () => { uploadBatch(dirInput.files); dirInput.value = ''; };
 
 function fmtSize(b) {
   return b > 1048576 ? (b/1048576).toFixed(1)+' MB' : b > 1024 ? (b/1024).toFixed(0)+' KB' : b+' B';
 }
 function fmtETA(s) {
-  if (s == null) return '估算中…';
+  if (s == null) return '';
   if (s < 5) return '即将完成';
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.round(s%60);
-  if (h > 0) return `约 ${h} 小时 ${m} 分`;
-  return m > 0 ? `约 ${m} 分 ${sec} 秒` : `约 ${sec} 秒`;
-}
-function setFile(f) {
-  if (!f) return;
-  if (!f.name.toLowerCase().endsWith('.pdf')) { alert('仅支持 .pdf 文件'); return; }
-  chosen = f;
-  $('fname').textContent = f.name;
-  $('fsize').textContent = fmtSize(f.size);
-  $('fileinfo').classList.add('show');
-  $('start').disabled = false;
-  $('result').style.display = 'none';
-  $('err').style.display = 'none';
+  if (h > 0) return `剩余约 ${h}小时${m}分`;
+  return m > 0 ? `剩余约 ${m}分${sec}秒` : `剩余约 ${sec}秒`;
 }
 
-$('start').onclick = async () => {
-  if (!chosen) return;
-  $('start').disabled = true;
-  $('progwrap').style.display = 'block';
-  $('result').style.display = 'none';
-  $('err').style.display = 'none';
-  const fd = new FormData();
-  fd.append('file', chosen);
-  try {
-    const r = await fetch('/api/upload', {method:'POST', body: fd});
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || '上传失败');
-    poll(d.task_id);
-  } catch (e) {
-    showError(e.message);
-    $('start').disabled = false;
-  }
-};
-
-function poll(id) {
-  timer = setInterval(async () => {
+async function uploadBatch(fileList) {
+  const pdfs = [...fileList].filter(f => f.name.toLowerCase().endsWith('.pdf'));
+  if (!pdfs.length) { alert('未找到 PDF 文件'); return; }
+  $('qhint').style.display = 'block';
+  $('qhint').textContent = `📤 上传中… 0/${pdfs.length}`;
+  let i = 0;
+  for (const f of pdfs) {
+    i++;
+    $('qhint').textContent = `📤 上传中… ${i}/${pdfs.length} · ${f.name}`;
+    const fd = new FormData();
+    fd.append('file', f);
     try {
-      const r = await fetch(`/api/progress/${id}`);
-      const d = await r.json();
-      $('fill').style.width = (d.percent||0) + '%';
-      $('pct').textContent = (d.percent||0) + '%';
-      $('stage').textContent = (d.stage||'') + (d.detail ? ` · ${d.detail}` : '') + (d.pages ? ` · 共${d.pages}页` : '');
-      $('eta').textContent = d.state === 'done' ? `总耗时 ${d.elapsed_s}s`
-        : `预计剩余时间：<b>${fmtETA(d.eta_s)}</b>`;
-      document.querySelectorAll('#stages span').forEach(s => {
-        s.classList.remove('cur','done');
-        const names = [...document.querySelectorAll('#stages span')].map(x=>x.dataset.s);
-        const cur = names.indexOf(d.stage);
-        const idx = names.indexOf(s.dataset.s);
-        if (cur >= 0 && idx < cur) s.classList.add('done');
-        else if (idx === cur) s.classList.add('cur');
-      });
-      if (d.state === 'done') {
-        clearInterval(timer);
-        $('fill').style.width = '100%'; $('pct').textContent = '100%';
-        $('progwrap').style.display = 'none';
-        const a = d.audit || {};
-        $('r_ch').textContent = a.chapters ?? '-';
-        $('r_fn').textContent = a.footnotes_matched != null ? `${a.footnotes_matched}/${a.footnotes_total}` : '-';
-        $('r_img').textContent = a.images_embedded ?? '-';
-        $('r_re').textContent = a.retention_pct != null ? a.retention_pct + '%' : '-';
-        $('dl').href = d.download;
-        $('result').style.display = 'block';
-        $('start').disabled = false;
-      } else if (d.state === 'error') {
-        clearInterval(timer);
-        showError(d.error || '处理失败');
-        $('start').disabled = false;
+      const r = await fetch('/api/upload', {method:'POST', body: fd});
+      if (!r.ok) {
+        const d = await r.json().catch(()=>({}));
+        $('qhint').textContent = `❌ ${f.name}: ${d.detail || '上传失败'}`;
+        await new Promise(res => setTimeout(res, 1500));
       }
-    } catch (e) { /* 网络抖动忽略 */ }
-  }, 800);
+    } catch (e) {
+      $('qhint').textContent = `❌ ${f.name}: ${e.message}`;
+      await new Promise(res => setTimeout(res, 1500));
+    }
+  }
+  $('qhint').textContent = `✅ ${pdfs.length} 个 PDF 已加入队列（服务端串行转换）`;
+  setTimeout(() => { $('qhint').style.display = 'none'; }, 4000);
+  refresh();
 }
 
-function showError(msg) {
-  const el = $('err');
-  el.textContent = '❌ ' + msg;
-  el.style.display = 'block';
-  $('progwrap').style.display = 'block';
-  $('eta').textContent = '';
+function autoDownload(t) {
+  if (triggered.has(t.task_id)) return;
+  triggered.add(t.task_id);
+  const a = document.createElement('a');
+  a.href = t.download;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
-$('again').onclick = () => {
-  $('result').style.display = 'none';
-  $('progwrap').style.display = 'none';
-  $('fileinfo').classList.remove('show');
-  chosen = null; $('start').disabled = true;
-  fileInput.value = '';
-};
+function render(list) {
+  const tl = $('tasklist');
+  // 完成即自动下载（每次发现新完成的任务触发一次）
+  list.forEach(t => { if (t.state === 'done' && t.download) autoDownload(t); });
+  // 首次渲染恢复历史任务
+  tl.innerHTML = list.map(t => {
+    const name = t.filename || t.task_id;
+    const running = t.state === 'running' || t.state === 'queued';
+    const bar = running ? `<div class="bar"><div class="fill" style="width:${t.percent||0}%"></div></div>`
+      : `<div class="bar"><div class="fill" style="width:${t.state==='done'?100:0}%"></div></div>`;
+    let status = '', meta = '';
+    if (t.state === 'done') {
+      const a = t.audit || {};
+      status = `<span class="status ok">✅ 完成</span>`;
+      meta = `<div class="meta"><span>${a.chapters ?? '-'}章 · 脚注${a.footnotes_matched ?? 0}/${a.footnotes_total ?? 0} · 图${a.images_embedded ?? 0} · 留存${a.retention_pct ?? '-'}%</span><span>${t.elapsed_s ?? ''}s</span></div>`;
+    } else if (t.state === 'error') {
+      status = `<span class="status err">❌ 失败</span>`;
+      meta = `<div class="err-msg">${t.error || ''}</div>`;
+    } else {
+      status = `<span class="status">${t.state === 'queued' ? '⏳ 排队' : '⚙️ 转换中'}</span>`;
+      meta = `<div class="meta"><span>${t.stage||''}${t.detail?' · '+t.detail:''}${t.pages?' · 共'+t.pages+'页':''}</span><span>${fmtETA(t.eta_s)}</span></div>`;
+    }
+    const dl = t.state === 'done' && t.download
+      ? `<a class="dl" href="${t.download}" download>${name.replace(/\.pdf$/i,'')}.epub ⬇️</a>` : '';
+    return `<div class="task">
+      <div class="head"><span class="name">${name}</span>${status}</div>
+      ${bar}${meta}${dl}
+    </div>`;
+  }).join('');
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/tasks');
+    const list = await r.json();
+    render(list || []);
+  } catch (e) { /* 服务未就绪时静默 */ }
+}
+
+// 页面加载即恢复历史任务；此后 1.2s 轮询
+refresh();
+setInterval(refresh, 1200);
 </script>
 </body>
 </html>
