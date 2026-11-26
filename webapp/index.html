@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCR TXT → EPUB 清洗</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --line: #2a2f3a;
+    --text: #e6e9ef; --muted: #8b93a3; --accent: #5b8cff; --accent2: #3ecf8e;
+    --danger: #ff6b6b; --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 70% -10%, #1a2033 0%, var(--bg) 60%);
+    color: var(--text); font-family: -apple-system, "PingFang SC", "Segoe UI", sans-serif;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 640px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 36px; box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  h1 { font-size: 22px; font-weight: 700; letter-spacing: .5px; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 6px; line-height: 1.6; }
+  .drop {
+    margin-top: 26px; border: 2px dashed var(--line); border-radius: var(--radius);
+    padding: 44px 20px; text-align: center; cursor: pointer; transition: all .2s;
+    background: var(--panel2);
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); background: #20263a; }
+  .drop .icon { font-size: 40px; margin-bottom: 10px; }
+  .drop .hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .drop strong { color: var(--accent); }
+  input[type=file] { display: none; }
+  .fileinfo {
+    display: none; margin-top: 18px; background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px 16px; font-size: 14px;
+    display: none; align-items: center; justify-content: space-between;
+  }
+  .fileinfo.show { display: flex; }
+  .fileinfo .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
+  .btn {
+    margin-top: 20px; width: 100%; padding: 14px; border: 0; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), #7c5bff); color: #fff;
+    font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity .2s;
+  }
+  .btn:hover { opacity: .92; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .prog-wrap { display: none; margin-top: 26px; }
+  .prog-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .prog-head .pct { color: var(--accent2); font-weight: 700; font-size: 15px; }
+  .bar { height: 10px; background: var(--panel2); border-radius: 99px; overflow: hidden; border: 1px solid var(--line); }
+  .bar .fill {
+    height: 100%; width: 0%; border-radius: 99px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width .4s ease;
+  }
+  .eta { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .eta b { color: var(--text); }
+  .stages { margin-top: 14px; font-size: 12px; color: var(--muted); line-height: 1.9; }
+  .stages span { margin-right: 14px; }
+  .stages .cur { color: var(--accent2); font-weight: 600; }
+  .stages .done { color: #566; text-decoration: line-through; }
+  .result { display: none; margin-top: 26px; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .result h2 { font-size: 16px; color: var(--accent2); margin-bottom: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; text-align: center; }
+  .stat .v { font-size: 18px; font-weight: 700; color: var(--accent); }
+  .stat .k { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .dl {
+    display: block; text-align: center; padding: 13px; border-radius: 10px; text-decoration: none;
+    background: linear-gradient(135deg, var(--accent2), #2bb673); color: #08110c; font-weight: 700; font-size: 15px;
+  }
+  .err { display: none; margin-top: 20px; background: #2a1a1e; border: 1px solid #5a2a33; border-radius: 10px; padding: 14px; color: var(--danger); font-size: 13px; white-space: pre-wrap; }
+  .again { margin-top: 14px; background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 10px; padding: 10px; width: 100%; cursor: pointer; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>📖 OCR TXT → EPUB 清洗</h1>
+  <div class="sub">规则清洗：页码/页眉/装饰噪声移除 · 连字符合并 · 年份锚分章 · 星号脚注双向链接 · 分章 EPUB 输出</div>
+
+  <div class="drop" id="drop">
+    <div class="icon">📄</div>
+    <div>拖拽 <strong>TXT</strong> 到此处，或点击选择文件</div>
+    <div class="hint">仅支持 .txt · 最大 100MB</div>
+    <input type="file" id="file" accept=".txt">
+  </div>
+
+  <div class="fileinfo" id="fileinfo">
+    <span class="name" id="fname"></span>
+    <span id="fsize" style="color:var(--muted)"></span>
+  </div>
+
+  <button class="btn" id="start" disabled>开始清洗 → EPUB</button>
+
+  <div class="prog-wrap" id="progwrap">
+    <div class="prog-head">
+      <span id="stage">准备中…</span>
+      <span class="pct" id="pct">0%</span>
+    </div>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <div class="eta" id="eta"></div>
+    <div class="stages" id="stages">
+      <span data-s="读取文件">读取文件</span><span data-s="锚点检测">锚点检测</span><span
+      data-s="页码检测">页码检测</span><span data-s="页眉检测">页眉检测</span><span
+      data-s="噪声过滤">噪声过滤</span><span data-s="连字符合并">连字符合并</span><span
+      data-s="章切分">章切分</span><span data-s="段落重组">段落重组</span><span
+      data-s="生成EPUB">生成EPUB</span>
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="result" id="result">
+    <h2>✅ 清洗完成</h2>
+    <div class="stats">
+      <div class="stat"><div class="v" id="r_ch">-</div><div class="k">章节</div></div>
+      <div class="stat"><div class="v" id="r_pa">-</div><div class="k">段落</div></div>
+      <div class="stat"><div class="v" id="r_fn">-</div><div class="k">脚注</div></div>
+      <div class="stat"><div class="v" id="r_tm">-</div><div class="k">耗时</div></div>
+    </div>
+    <a class="dl" id="dl" href="#">⬇️ 下载 EPUB</a>
+    <button class="again" id="again">再转换一本</button>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const drop = $('drop'), fileInput = $('file');
+let chosen = null, timer = null;
+
+drop.onclick = () => fileInput.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); setFile(e.dataTransfer.files[0]); };
+fileInput.onchange = () => setFile(fileInput.files[0]);
+
+function fmtSize(b) {
+  return b > 1048576 ? (b/1048576).toFixed(1)+' MB' : b > 1024 ? (b/1024).toFixed(0)+' KB' : b+' B';
+}
+function fmtETA(s) {
+  if (s == null) return '估算中…';
+  if (s < 5) return '即将完成';
+  const m = Math.floor(s/60), sec = Math.round(s%60);
+  return m > 0 ? `约 ${m} 分 ${sec} 秒` : `约 ${sec} 秒`;
+}
+function setFile(f) {
+  if (!f) return;
+  if (!f.name.toLowerCase().endsWith('.txt')) { alert('仅支持 .txt 文件'); return; }
+  chosen = f;
+  $('fname').textContent = f.name;
+  $('fsize').textContent = fmtSize(f.size);
+  $('fileinfo').classList.add('show');
+  $('start').disabled = false;
+  $('result').style.display = 'none';
+  $('err').style.display = 'none';
+}
+
+$('start').onclick = async () => {
+  if (!chosen) return;
+  $('start').disabled = true;
+  $('progwrap').style.display = 'block';
+  $('result').style.display = 'none';
+  $('err').style.display = 'none';
+  const fd = new FormData();
+  fd.append('file', chosen);
+  try {
+    const r = await fetch('/api/upload', {method:'POST', body: fd});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || '上传失败');
+    poll(d.task_id);
+  } catch (e) {
+    showError(e.message);
+    $('start').disabled = false;
+  }
+};
+
+function poll(id) {
+  timer = setInterval(async () => {
+    try {
+      const r = await fetch(`/api/progress/${id}`);
+      const d = await r.json();
+      $('fill').style.width = (d.percent||0) + '%';
+      $('pct').textContent = (d.percent||0) + '%';
+      $('stage').textContent = d.stage || '';
+      $('eta').textContent = d.state === 'done' ? `总耗时 ${d.elapsed_s}s`
+        : `预计剩余时间：<b>${fmtETA(d.eta_s)}</b>`;
+      document.querySelectorAll('#stages span').forEach(s => {
+        s.classList.remove('cur','done');
+        const names = [...document.querySelectorAll('#stages span')].map(x=>x.dataset.s);
+        const cur = names.indexOf(d.stage);
+        const idx = names.indexOf(s.dataset.s);
+        if (cur >= 0 && idx < cur) s.classList.add('done');
+        else if (idx === cur) s.classList.add('cur');
+      });
+      if (d.state === 'done') {
+        clearInterval(timer);
+        $('fill').style.width = '100%'; $('pct').textContent = '100%';
+        $('progwrap').style.display = 'none';
+        $('r_ch').textContent = d.chapters ?? '-';
+        $('r_pa').textContent = d.paras ?? '-';
+        $('r_fn').textContent = d.footnotes ?? '-';
+        $('r_tm').textContent = d.elapsed_s + 's';
+        $('dl').href = d.download;
+        $('result').style.display = 'block';
+        $('start').disabled = false;
+      } else if (d.state === 'error') {
+        clearInterval(timer);
+        showError(d.error || '处理失败');
+        $('start').disabled = false;
+      }
+    } catch (e) { /* 网络抖动忽略，下轮重试 */ }
+  }, 600);
+}
+
+function showError(msg) {
+  const el = $('err');
+  el.textContent = '❌ ' + msg;
+  el.style.display = 'block';
+  $('progwrap').style.display = 'block';
+  $('eta').textContent = '';
+  $('fill').style.width = '0%';
+}
+
+$('again').onclick = () => {
+  $('result').style.display = 'none';
+  $('progwrap').style.display = 'none';
+  $('fileinfo').classList.remove('show');
+  chosen = null; $('start').disabled = true;
+  fileInput.value = '';
+};
+</script>
+</body>
+</html>
